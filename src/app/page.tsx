@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, BookOpen, LineChart, BrainCircuit, User, MoreHorizontal, Cloud, CloudOff } from 'lucide-react';
+import { LayoutDashboard, BookOpen, LineChart, BrainCircuit, User, MoreHorizontal, Cloud, CloudOff, Lock, PlayCircle, CheckCircle } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -99,6 +99,9 @@ export default function Home() {
   const [dbUser, setDbUser] = useState<FirebaseUser | null>(null);
   const [syncStatus, setSyncStatus] = useState('offline'); // 'offline', 'syncing', 'saved'
 
+  // Module State
+  const [selectedModule, setSelectedModule] = useState<any | null>(null);
+
   // Simulation State
   const [simState, setSimState] = useState('decision');
   const [simFeedback, setSimFeedback] = useState({ title: '', text: '', color: '' });
@@ -126,44 +129,66 @@ export default function Home() {
 
   // --- 2. DATA FETCHING (Load Saved Progress) ---
   useEffect(() => {
-    if (!dbUser || !isCloudEnabled || !db) return;
-    
-    setSyncStatus('syncing');
-    const docRef = doc(db, 'artifacts', appId, 'users', dbUser.uid, 'profile', 'stats');
-    
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    if (isCloudEnabled && dbUser && db) {
+      setSyncStatus('syncing');
+      const docRef = doc(db, 'artifacts', appId, 'users', dbUser.uid, 'profile', 'stats');
+      
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.tier) {
+            setUserTier(data.tier);
+            setCurrentView('app'); // Skip quiz if they already have a tier
+          }
+          if (data.equity !== undefined) setEquity(data.equity);
+          if (data.health !== undefined) setHealth(data.health);
+          setSyncStatus('saved');
+        } else {
+          setSyncStatus('saved');
+        }
+      }, (error) => {
+        console.error("Snapshot error:", error);
+        setSyncStatus('offline');
+      });
+
+      return () => unsubscribe();
+    } else if (!isCloudEnabled) {
+      // FALLBACK FOR LOCAL TESTING: Load from browser storage
+      const savedData = localStorage.getItem('atlas_user_data');
+      if (savedData) {
+        const data = JSON.parse(savedData);
         if (data.tier) {
           setUserTier(data.tier);
-          setCurrentView('app'); // Skip quiz if they already have a tier
+          setCurrentView('app');
         }
         if (data.equity !== undefined) setEquity(data.equity);
         if (data.health !== undefined) setHealth(data.health);
-        setSyncStatus('saved');
-      } else {
-        setSyncStatus('saved');
+        setSyncStatus('saved (local)');
       }
-    }, (error) => {
-      console.error("Snapshot error:", error);
-      setSyncStatus('offline');
-    });
-
-    return () => unsubscribe();
+    }
   }, [dbUser]);
 
   // --- 3. DATA SAVING (Update Cloud on actions) ---
   const saveToCloud = async (dataToSave: any) => {
-    if (!dbUser || !isCloudEnabled || !db) return;
-    
     setSyncStatus('syncing');
-    try {
-      const docRef = doc(db, 'artifacts', appId, 'users', dbUser.uid, 'profile', 'stats');
-      await setDoc(docRef, dataToSave, { merge: true });
-      setSyncStatus('saved');
-    } catch (e) {
-      console.error("Save error:", e);
-      setSyncStatus('offline');
+    
+    if (isCloudEnabled && dbUser && db) {
+      try {
+        const docRef = doc(db, 'artifacts', appId, 'users', dbUser.uid, 'profile', 'stats');
+        await setDoc(docRef, dataToSave, { merge: true });
+        setSyncStatus('saved');
+      } catch (e) {
+        console.error("Save error:", e);
+        setSyncStatus('offline');
+      }
+    } else {
+      // FALLBACK FOR LOCAL TESTING: Save to browser storage
+      setTimeout(() => {
+        const existingData = JSON.parse(localStorage.getItem('atlas_user_data') || '{}');
+        const newData = { ...existingData, ...dataToSave };
+        localStorage.setItem('atlas_user_data', JSON.stringify(newData));
+        setSyncStatus('saved (local)');
+      }, 300); // Fake a tiny network delay for the UI icon
     }
   };
 
@@ -262,6 +287,33 @@ export default function Home() {
     setSimState('decision');
   };
 
+  const courseModules = [
+    {
+      id: '1.1',
+      tier: 'Catalyst',
+      title: 'Market Anatomy & Order Mechanics',
+      description: 'Understanding the Bid-Ask spread, limit orders, and how price actually moves.',
+      status: 'completed', // completed, active, locked
+      time: '5 min'
+    },
+    {
+      id: '1.2',
+      tier: 'Catalyst',
+      title: 'Introduction to Charts',
+      description: 'Candlestick anatomy, market states (trends vs ranging), and volume confirmation.',
+      status: 'active',
+      time: '8 min'
+    },
+    {
+      id: '2.1',
+      tier: 'Architect',
+      title: 'Advanced Confluence',
+      description: 'Dynamic Support & Resistance using SMAs and EMAs.',
+      status: 'locked',
+      time: '12 min'
+    }
+  ];
+
   const renderQuiz = () => {
     const q = questions[currentQuestionIdx];
     return (
@@ -323,7 +375,10 @@ export default function Home() {
                 <LayoutDashboard size={20} />
                 <span>Command Center</span>
               </button>
-              <button className="w-full flex items-center space-x-3 text-left p-3 rounded-lg text-gray-400 hover:bg-gray-800/50 hover:text-white transition-colors">
+              <button 
+                onClick={() => { setActiveTab('modules'); setSelectedModule(null); }}
+                className={`w-full flex items-center space-x-3 text-left p-3 rounded-lg transition-colors ${activeTab === 'modules' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}`}
+              >
                 <BookOpen size={20} />
                 <span>Training Modules</span>
               </button>
@@ -347,7 +402,7 @@ export default function Home() {
           {/* Top Bar */}
           <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#141414]">
             <h2 className="text-lg font-medium">
-              {activeTab === 'dashboard' ? 'Command Center' : 'Active Simulation'}
+              {activeTab === 'dashboard' ? 'Command Center' : activeTab === 'modules' ? 'Training Academy' : 'Active Simulation'}
             </h2>
             <div className="flex items-center space-x-6">
               
@@ -356,6 +411,7 @@ export default function Home() {
                 {syncStatus === 'saved' && <Cloud size={14} className="text-green-500" />}
                 {syncStatus === 'syncing' && <Cloud size={14} className="text-yellow-500 animate-pulse" />}
                 {syncStatus === 'offline' && <CloudOff size={14} className="text-gray-500" />}
+                {syncStatus === 'saved (local)' && <Cloud size={14} className="text-blue-500" />}
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider">{syncStatus}</span>
               </div>
 
@@ -439,6 +495,88 @@ export default function Home() {
                   </div>
                 </div>
               </>
+            )}
+
+            {activeTab === 'modules' && (
+              <div className="max-w-5xl mx-auto h-full flex flex-col">
+                {!selectedModule ? (
+                  <>
+                    <div className="mb-8">
+                      <h1 className="text-3xl font-bold mb-2">The L.S.S. Curriculum</h1>
+                      <p className="text-gray-400">Master the mechanics before touching live capital. Complete modules to unlock advanced simulations.</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {courseModules.map((mod) => (
+                        <div 
+                          key={mod.id} 
+                          className={`relative border rounded-2xl p-6 transition-all ${mod.status === 'locked' ? 'bg-[#141414] border-gray-800 opacity-60' : 'bg-[#1a1a1a] border-gray-700 hover:border-blue-500 cursor-pointer'}`}
+                          onClick={() => mod.status !== 'locked' && setSelectedModule(mod)}
+                        >
+                          <div className="flex justify-between items-start mb-4">
+                            <span className="text-xs font-bold uppercase tracking-wider text-blue-500">{mod.tier} • Module {mod.id}</span>
+                            {mod.status === 'completed' && <CheckCircle size={18} className="text-green-500" />}
+                            {mod.status === 'locked' && <Lock size={18} className="text-gray-600" />}
+                            {mod.status === 'active' && <PlayCircle size={18} className="text-blue-500" />}
+                          </div>
+                          <h3 className="text-xl font-bold mb-2 text-gray-100">{mod.title}</h3>
+                          <p className="text-sm text-gray-400 mb-4">{mod.description}</p>
+                          <div className="flex items-center text-xs text-gray-500 font-medium">
+                            <span>Est. Time: {mod.time}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-[#1a1a1a] border border-gray-800 rounded-2xl flex-1 flex flex-col overflow-hidden">
+                    <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-[#141414]">
+                      <div>
+                        <span className="text-xs font-bold text-blue-500 uppercase tracking-widest">Module {selectedModule.id}</span>
+                        <h2 className="text-2xl font-bold">{selectedModule.title}</h2>
+                      </div>
+                      <button onClick={() => setSelectedModule(null)} className="text-sm text-gray-400 hover:text-white transition-colors">Close X</button>
+                    </div>
+                    
+                    <div className="p-8 overflow-y-auto flex-1">
+                      <div className="max-w-3xl mx-auto space-y-8">
+                        <section>
+                          <h3 className="text-xl font-bold text-gray-300 mb-3 border-l-4 border-blue-500 pl-3">L - Learn</h3>
+                          <p className="text-gray-400 leading-relaxed text-lg">
+                            {selectedModule.title === 'Introduction to Charts' 
+                              ? "A candlestick tells you the story of a specific timeframe. The wick represents where price went, but was rejected. The body represents where price successfully closed. High volume on a large body candle indicates institutional participation."
+                              : "This is the foundational learning material. In the real app, this will be populated with rich text, AI-generated explanations, and video content tailored to the exact user's tier and learning speed."}
+                          </p>
+                        </section>
+                        
+                        <section>
+                          <h3 className="text-xl font-bold text-gray-300 mb-3 border-l-4 border-green-500 pl-3">S - Simulate</h3>
+                          <p className="text-gray-400 leading-relaxed mb-4">
+                            Theory is useless without execution. It's time to test your recognition of this pattern in a risk-free environment.
+                          </p>
+                          <button 
+                            onClick={() => setActiveTab('simulations')}
+                            className="bg-green-600/20 text-green-500 border border-green-500/50 hover:bg-green-600/30 px-6 py-3 rounded-xl font-medium transition-colors flex items-center space-x-2"
+                          >
+                            <LineChart size={18} />
+                            <span>Jump to Simulation</span>
+                          </button>
+                        </section>
+
+                        <section>
+                          <h3 className="text-xl font-bold text-gray-300 mb-3 border-l-4 border-purple-500 pl-3">S - Shadow (Live Market)</h3>
+                          <div className="bg-purple-900/20 border border-purple-500/30 rounded-xl p-4">
+                            <p className="text-sm text-purple-300 font-bold tracking-widest uppercase mb-1">AI Market Insight:</p>
+                            <p className="text-gray-300 text-sm">
+                              "Right now, TSLA is approaching a major support zone similar to what we just discussed. I have added it to your daily watchlist on the dashboard."
+                            </p>
+                          </div>
+                        </section>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {activeTab === 'simulations' && (
