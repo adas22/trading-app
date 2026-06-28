@@ -3,11 +3,77 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, BookOpen, LineChart, BrainCircuit, User, MoreHorizontal } from 'lucide-react';
 
+// --- MOCK CHART DATA ---
+const sampleData = [
+  { time: '2023-10-02', open: 150.12, high: 152.45, low: 149.20, close: 151.05 },
+  { time: '2023-10-03', open: 151.10, high: 154.20, low: 150.50, close: 153.80 },
+  { time: '2023-10-04', open: 153.50, high: 155.10, low: 152.80, close: 154.50 },
+  { time: '2023-10-05', open: 154.20, high: 154.80, low: 151.10, close: 151.50 },
+  { time: '2023-10-06', open: 151.80, high: 153.20, low: 149.90, close: 152.10 },
+  { time: '2023-10-09', open: 152.00, high: 156.00, low: 151.50, close: 155.80 },
+  { time: '2023-10-10', open: 155.90, high: 158.20, low: 154.80, close: 157.20 },
+  { time: '2023-10-11', open: 157.50, high: 159.10, low: 156.20, close: 158.90 },
+  { time: '2023-10-12', open: 159.00, high: 159.50, low: 156.50, close: 157.10 },
+  { time: '2023-10-13', open: 157.00, high: 158.00, low: 154.50, close: 155.20 },
+];
+
+// --- CUSTOM SVG CANDLESTICK CHART COMPONENT ---
+const TradingChart = () => {
+  // Calculate bounds for scaling the SVG
+  const minLow = Math.min(...sampleData.map(d => d.low)) - 2;
+  const maxHigh = Math.max(...sampleData.map(d => d.high)) + 2;
+  const range = maxHigh - minLow;
+
+  return (
+    <div className="w-full h-full rounded-xl overflow-hidden bg-[#111111] p-4 relative flex flex-col justify-center">
+      <svg width="100%" height="90%" viewBox="0 0 100 100" preserveAspectRatio="none" className="overflow-visible">
+        {/* Horizontal Grid Lines */}
+        <line x1="0" y1="25" x2="100" y2="25" stroke="#333333" strokeWidth="0.5" />
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#333333" strokeWidth="0.5" />
+        <line x1="0" y1="75" x2="100" y2="75" stroke="#333333" strokeWidth="0.5" />
+
+        {/* Candlesticks */}
+        {sampleData.map((data, idx) => {
+          // Space candles evenly across the X axis
+          const x = (idx / (sampleData.length - 1)) * 90 + 5; 
+          
+          const isUp = data.close >= data.open;
+          const color = isUp ? '#22c55e' : '#ef4444'; // green-500 / red-500
+
+          // Map price values to SVG Y-coordinates (0 is top, 100 is bottom)
+          const yHigh = 100 - ((data.high - minLow) / range) * 100;
+          const yLow = 100 - ((data.low - minLow) / range) * 100;
+          const yOpen = 100 - ((data.open - minLow) / range) * 100;
+          const yClose = 100 - ((data.close - minLow) / range) * 100;
+
+          const bodyTop = Math.min(yOpen, yClose);
+          const bodyHeight = Math.max(Math.abs(yOpen - yClose), 0.5);
+
+          return (
+            <g key={idx} className="hover:opacity-80 transition-opacity cursor-pointer">
+              {/* Wick */}
+              <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={color} strokeWidth="0.5" />
+              {/* Body */}
+              <rect x={x - 1.5} y={bodyTop} width="3" height={bodyHeight} fill={color} />
+            </g>
+          );
+        })}
+      </svg>
+      {/* X-Axis labels mock */}
+      <div className="flex justify-between w-full text-[10px] text-gray-500 mt-2 px-2">
+        <span>Oct 02</span>
+        <span>Oct 06</span>
+        <span>Oct 13</span>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   // State to manage which screen the user is currently seeing
   const [currentView, setCurrentView] = useState('quiz'); // 'quiz' or 'dashboard'
   const [userTier, setUserTier] = useState(''); // 'Catalyst', 'Architect', 'Operator'
-  const [quizAnswers, setQuizAnswers] = useState({});
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
   // The "Sorting Hat" Questions
@@ -41,7 +107,7 @@ export default function Home() {
     }
   ];
 
-  const handleOptionSelect = (points) => {
+  const handleOptionSelect = (points: number) => {
     const newAnswers = { ...quizAnswers, [currentQuestionIdx]: points };
     setQuizAnswers(newAnswers);
 
@@ -170,14 +236,14 @@ export default function Home() {
             {/* Widgets Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
-              <div className="col-span-2 bg-[#1a1a1a] border border-gray-800 rounded-2xl p-6">
+              <div className="col-span-2 bg-[#1a1a1a] border border-gray-800 rounded-2xl p-6 flex flex-col">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="font-semibold text-gray-300">Equity Curve (Simulated)</h3>
                   <MoreHorizontal className="text-gray-500 cursor-pointer" size={20} />
                 </div>
-                {/* Mock Chart Area */}
-                <div className="h-64 border border-dashed border-gray-700 rounded-xl flex items-center justify-center bg-[#111]">
-                  <p className="text-gray-500 text-sm">[ TradingView Chart Component will render here later ]</p>
+                {/* Custom SVG Chart */}
+                <div className="h-64 rounded-xl flex-1 items-center justify-center bg-[#111]">
+                  <TradingChart />
                 </div>
               </div>
 
