@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, BookOpen, LineChart, BrainCircuit, User, MoreHorizontal, Cloud, CloudOff, Lock, PlayCircle, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, BookOpen, LineChart, BrainCircuit, User, MoreHorizontal, Cloud, CloudOff, Lock, PlayCircle, CheckCircle, TrendingUp, TrendingDown, X } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -105,6 +105,38 @@ export default function Home() {
   // Simulation State
   const [simState, setSimState] = useState('decision');
   const [simFeedback, setSimFeedback] = useState({ title: '', text: '', color: '' });
+
+  // Live Market State (Simulated)
+  const [indices, setIndices] = useState([
+    { id: 'nifty50', name: 'NIFTY 50', price: 23550.25, change: 85.40, pct: 0.36 },
+    { id: 'sensex', name: 'SENSEX', price: 77240.10, change: -120.30, pct: -0.15 },
+    { id: 'banknifty', name: 'BANKNIFTY', price: 51230.80, change: 215.50, pct: 0.42 },
+    { id: 'finnifty', name: 'FINNIFTY', price: 22850.10, change: 15.30, pct: 0.07 },
+  ]);
+  const [selectedIndexId, setSelectedIndexId] = useState<string | null>(null);
+
+  // --- 0. SIMULATE LIVE TICKS ---
+  useEffect(() => {
+    // Generate micro-fluctuations every 1 second to simulate live tick data
+    const interval = setInterval(() => {
+      setIndices(prev => prev.map(ind => {
+        // Random drift between -1.5 and +1.5
+        const tickChange = (Math.random() - 0.5) * 3;
+        const newPrice = ind.price + tickChange;
+        const newChange = ind.change + tickChange;
+        const newPct = (newChange / (newPrice - newChange)) * 100;
+        return { 
+          ...ind, 
+          price: newPrice, 
+          change: newChange, 
+          pct: newPct 
+        };
+      }));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
 
   // --- 1. AUTHENTICATION (Connect to Cloud) ---
   useEffect(() => {
@@ -351,17 +383,83 @@ export default function Home() {
   };
 
   const renderMainApp = () => {
+    const selectedIndexDetails = selectedIndexId ? indices.find(ind => ind.id === selectedIndexId) : null;
+
     return (
-      <div className="min-h-screen flex bg-[#0f0f0f] text-gray-100 font-sans">
+      <div className="min-h-screen flex bg-[#0f0f0f] text-gray-100 font-sans relative">
         
+        {/* Index Details Modal Overlay */}
+        {selectedIndexDetails && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+            <div className="bg-[#1a1a1a] border border-gray-700 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-800 flex justify-between items-start bg-[#141414]">
+                <div>
+                  <div className="flex items-center space-x-3 mb-1">
+                    <h2 className="text-2xl font-bold">{selectedIndexDetails.name}</h2>
+                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-900/40 text-blue-400 border border-blue-800">INDEX</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <span className="text-3xl font-light tracking-tight">{selectedIndexDetails.price.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <div className={`flex items-center text-sm font-semibold ${selectedIndexDetails.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {selectedIndexDetails.change >= 0 ? <TrendingUp size={16} className="mr-1" /> : <TrendingDown size={16} className="mr-1" />}
+                      {selectedIndexDetails.change > 0 ? '+' : ''}{selectedIndexDetails.change.toFixed(2)} ({selectedIndexDetails.pct > 0 ? '+' : ''}{selectedIndexDetails.pct.toFixed(2)}%)
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedIndexId(null)} 
+                  className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              {/* Modal Body */}
+              <div className="p-6 flex-1 flex flex-col">
+                <div className="h-64 mb-6 rounded-xl border border-gray-800 bg-black overflow-hidden relative">
+                   <div className="absolute top-2 left-2 z-10 flex space-x-2">
+                     <span className="bg-gray-800/80 px-2 py-1 rounded text-xs font-medium">1D</span>
+                     <span className="bg-transparent hover:bg-gray-800/80 px-2 py-1 rounded text-xs text-gray-400 cursor-pointer">1W</span>
+                     <span className="bg-transparent hover:bg-gray-800/80 px-2 py-1 rounded text-xs text-gray-400 cursor-pointer">1M</span>
+                   </div>
+                   <TradingChart />
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-[#222] p-4 rounded-xl border border-gray-800">
+                    <p className="text-xs text-gray-500 mb-1">Day Range</p>
+                    <p className="text-sm font-medium">{(selectedIndexDetails.price - 45).toLocaleString('en-IN')} - {(selectedIndexDetails.price + 80).toLocaleString('en-IN')}</p>
+                  </div>
+                  <div className="bg-[#222] p-4 rounded-xl border border-gray-800">
+                    <p className="text-xs text-gray-500 mb-1">52W Range</p>
+                    <p className="text-sm font-medium">{(selectedIndexDetails.price * 0.85).toLocaleString('en-IN', {maximumFractionDigits:0})} - {(selectedIndexDetails.price * 1.05).toLocaleString('en-IN', {maximumFractionDigits:0})}</p>
+                  </div>
+                  <div className="bg-[#222] p-4 rounded-xl border border-gray-800">
+                    <p className="text-xs text-gray-500 mb-1">Previous Close</p>
+                    <p className="text-sm font-medium">{(selectedIndexDetails.price - selectedIndexDetails.change).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  </div>
+                  <div className="bg-[#222] p-4 rounded-xl border border-gray-800">
+                    <p className="text-xs text-gray-500 mb-1">Market Status</p>
+                    <p className="text-sm font-medium text-green-500 flex items-center">
+                      <span className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> Open
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 bg-[#141414] border-r border-gray-800 flex flex-col">
+        <aside className="w-64 bg-[#141414] border-r border-gray-800 flex flex-col relative z-10">
           <div className="p-6 border-b border-gray-800">
             <h1 className="text-xl font-bold tracking-wider text-white">ATLAS<span className="text-blue-500">.AI</span></h1>
             <p className="text-xs text-gray-400 mt-1">Trading Survival Engine</p>
           </div>
           
-          <div className="p-4">
+          <div className="p-4 flex-1">
             <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-6">
               <p className="text-xs text-blue-400 uppercase font-bold">Current Tier</p>
               <p className="text-sm font-semibold">{userTier || 'Loading...'}</p>
@@ -398,9 +496,9 @@ export default function Home() {
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-0">
           {/* Top Bar */}
-          <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#141414]">
+          <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#141414] shrink-0">
             <h2 className="text-lg font-medium">
               {activeTab === 'dashboard' ? 'Command Center' : activeTab === 'modules' ? 'Training Academy' : 'Active Simulation'}
             </h2>
@@ -434,10 +532,33 @@ export default function Home() {
           </header>
 
           {/* Dynamic Content (Dashboard OR Simulation) */}
-          <div className="flex-1 p-8 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
             
             {activeTab === 'dashboard' && (
-              <>
+              <div className="p-8">
+                {/* --- LIVE TICKER WIDGET --- */}
+                <div className="mb-8 overflow-hidden flex space-x-4">
+                  {indices.map((ind) => {
+                    const isPositive = ind.change >= 0;
+                    return (
+                      <div 
+                        key={ind.id}
+                        onClick={() => setSelectedIndexId(ind.id)}
+                        className="flex-1 bg-[#1a1a1a] border border-gray-800 hover:border-gray-600 rounded-xl p-4 cursor-pointer transition-colors"
+                      >
+                        <h3 className="text-xs font-bold text-gray-400 mb-1 tracking-wider">{ind.name}</h3>
+                        <div className="text-xl font-light mb-1">
+                          {ind.price.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </div>
+                        <div className={`flex items-center text-xs font-medium ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                          {isPositive ? <TrendingUp size={14} className="mr-1" /> : <TrendingDown size={14} className="mr-1" />}
+                          {isPositive ? '+' : ''}{ind.change.toFixed(2)} ({isPositive ? '+' : ''}{ind.pct.toFixed(2)}%)
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <div className="bg-gradient-to-r from-blue-900/40 to-[#141414] border border-blue-900/50 rounded-2xl p-8 mb-8">
                   <h2 className="text-2xl font-bold mb-2">Welcome to your Terminal.</h2>
                   <p className="text-gray-400 max-w-2xl">
@@ -494,11 +615,11 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {activeTab === 'modules' && (
-              <div className="max-w-5xl mx-auto h-full flex flex-col">
+              <div className="p-8 max-w-5xl mx-auto h-full flex flex-col">
                 {!selectedModule ? (
                   <>
                     <div className="mb-8">
@@ -580,7 +701,7 @@ export default function Home() {
             )}
 
             {activeTab === 'simulations' && (
-              <div className="max-w-4xl mx-auto flex flex-col h-full">
+              <div className="p-8 max-w-4xl mx-auto flex flex-col h-full">
                 <div className="mb-6 flex justify-between items-end">
                   <div>
                     <h2 className="text-sm font-bold text-blue-500 uppercase tracking-widest mb-1">
@@ -592,7 +713,7 @@ export default function Home() {
                 </div>
                 
                 {/* Chart Container */}
-                <div className="h-72 w-full bg-[#1a1a1a] border border-gray-800 rounded-2xl p-4 mb-6 relative">
+                <div className="h-72 w-full bg-[#1a1a1a] border border-gray-800 rounded-2xl p-4 mb-6 relative shrink-0">
                   <div className="absolute top-0 right-0 w-1/4 h-full bg-gradient-to-l from-[#1a1a1a] to-transparent z-10 pointer-events-none flex items-center justify-end pr-8">
                      <span className="text-gray-500 text-sm opacity-50 bg-black px-2 py-1 rounded">Future Price Action Hidden</span>
                   </div>
